@@ -9,6 +9,52 @@ from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 import copy
 from scipy.optimize import brentq
+import seaborn as sb
+from cycler import cycler
+
+# %%
+nord0 = '#2E3440'
+nord1 = '#3B4252'
+nord2 = '#434C5E'
+nord3 = '#4C566A'
+nord4 = '#D8DEE9'
+nord5 = '#E5E9F0'
+nord6 = '#ECEFF4'
+nord7 = '#8FBCBB'
+nord8 = '#88C0D0'
+nord9 = '#81A1C1'
+nord10 = '#5E81AC'
+nord11 = '#BF616A'
+nord12 = '#D08770'
+nord13 = '#EBCB8B'
+nord14 = '#A3BE8C'
+nord15 = '#B48EAD'
+#sb.set_theme()
+#sb.set_style('ticks')
+sb.set_theme(context='notebook',style='ticks')
+#mpl.use("pgf")
+plt.rcParams.update({
+  "text.usetex": True,
+  "text.latex.preamble": r'\usepackage{siunitx}',
+  #"font.family": 'Computer Modern Roman',
+  "font.family": 'serif',
+  "figure.autolayout": True,
+  "font.size": 11,
+  "pgf.texsystem": "pdflatex",
+  'pgf.rcfonts': False,
+})
+plt.rcParams['lines.linewidth'] = 1.5
+w,h = plt.figaspect(1.618034)
+textwidth = 5.50107
+plt.rcParams['figure.figsize'] = [0.85*textwidth,0.618*0.85*textwidth]
+plt.rc('text',usetex=True,color=nord0)
+#plt.rc('font',family='serif')
+plt.rc('axes',edgecolor=nord0,labelcolor=nord0)
+plt.rc('xtick',color=nord0)
+plt.rc('ytick',color=nord0)
+nord_cycler = (cycler(color=[nord10,nord11,nord7,nord3,nord15,nord12,nord13,nord14,nord0,nord8,nord9,nord4])\
+               +cycler(linestyle=['-','--','-.',':','-','--',':','-.','-','--',':','-.']))
+plt.rc('axes',prop_cycle=nord_cycler)
 
 # %%
 """
@@ -23,7 +69,8 @@ from scipy.optimize import brentq
 # %%
 points = 100
 C0 = np.zeros(points)
-x = np.linspace(0,1,points)
+L = 1
+x = np.linspace(0,L,points)
 C0[0] = 1
 C0[-1] = 0
 D = 1
@@ -56,9 +103,38 @@ for i in range(1,nsteps+1):
     C[tout] = copy.deepcopy(C[tout-1])
 
 # %%
+def steady(x):
+  return C0[0] + x/L*(C0[-1]-C0[0])
+def transpart(x,t,n):
+  #bn = 2*(np.cos(n*np.pi)*(C0[0]-C0[-1])-C0[0])/(np.pi*n)
+  bn = -2*(np.cos(n*np.pi)*-C0[-1]+C0[0])/(np.pi*n)
+  #bn = 2/np.pi*(np.cos(n*np.pi)*C0[-1]-C0[0])/n
+  #print(bn)
+  return bn*np.sin(n*np.pi*x/L)*np.exp(-(n*np.pi/L)**2*D*t)
+def transient(x,t,terms=100000):
+  n = np.linspace(1,terms,terms)
+  trans = transpart(x,t,n)
+  return np.sum(trans)
+
+# %%
+transol = {}
 for i in range(touts+1):
+  transol[i] = np.zeros_like(x)
+  for j in range(1,points-1):
+    transol[i][j] = transient(x[j],t[i])
+  transol[i] += steady(x)
+
+# %%
+for i in range(1,touts+1):
   plt.plot(x,C[i],label=f't = {t[i]:0.3f} s')
+  #plt.plot(x,C[i],label=f'transient = {t[i]:0.3f} s')
+  #plt.plot(x,transol[i])
+#plt.plot(x,steady(x))
 plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$\varphi$ [mol/$m^3$]')
+plt.tight_layout()
+plt.savefig('singlelayer.pgf',bbox_layout='tight')
 plt.show()
 
 # %%
@@ -135,4 +211,13 @@ for i in range(1,touts+1):
   plt.plot(x,C[i],label=f't = {t[i]:0.3f} s')
   print(C[i][points//2-1],C[i][points//2])
 plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$\varphi$ [mol/$m^3$]')
+plt.tight_layout()
+plt.savefig('multilayer.pgf',bbox_layout='tight')
 plt.show()
+
+# %%
+
+
+# %%
