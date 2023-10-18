@@ -77,7 +77,7 @@ C0[0] = 1
 C0[-1] = 0
 
 # Diffusion constant and temporal discretisation, plus output times
-D = 1
+D = 1.0
 tf = 2.0
 t = np.array([0.0,1e-3,5e-2,2e-1,2.0])
 touts = len(t) - 1
@@ -144,6 +144,23 @@ plt.savefig('singlelayer.pgf',bbox_layout='tight')
 plt.show()
 
 # %%
+# Plot single-layer solutions
+print(D)
+for i in range(1,touts+1):
+  J = -D*np.gradient(C[i],x)
+  plt.semilogy(x,J,label=f't = {t[i]:0.3f} s')
+  print(np.mean(J)/(C0[0]-C0[1]))
+  #plt.plot(x,C[i],label=f'transient = {t[i]:0.3f} s')
+  #plt.plot(x,transol[i])
+#plt.plot(x,steady(x))
+plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$\varphi$ [mol/$m^2\cdot s$]')
+plt.tight_layout()
+#plt.savefig('singlelayer.pgf',bbox_layout='tight')
+plt.show()
+
+# %%
 # Solve with scipy explicit Runge-Kutta method of order 5(4 for error control) algorithm to verify
 res = solve_ivp(timeder,(0.0,tf),C0,t_eval=t)
 
@@ -180,10 +197,10 @@ dx2 = x2[1]-x2[0]
 
 # Solution initial values and boundary conditions
 C0 = np.zeros(points)
-C0[0] = 1
+C0[0] = 1.0
 
 # Time discretisatiion
-dt = np.minimum(dx1**2/D1*0.5*0.95,dx1**2/D1*0.5*0.95)
+dt = np.minimum(dx1**2/D1*0.5*0.95,dx2**2/D2*0.5*0.95)
 nsteps = int(round(tf/dt,0))
 
 # %%
@@ -203,8 +220,16 @@ def tder2(ts,Cin):
 # Function used in solving interface boundary conditions by root-finding
 def ifsolve(Cm):
   Cp = S2/S1*Cm
-  Cdm = D1*(Cm-C[tout][len1-2])/dx1
-  Cdp = D2*(C[tout][len1+1]-Cp)/dx2
+  #Cdm = D1*(Cm-C[tout][len1-2])/dx1
+  #Cdp = D2*(C[tout][len1+1]-Cp)/dx2
+  #Cdm = D1*(1.5*Cm-2*C[tout][len1-2]+0.5*C[tout][len1-3])/dx1
+  #Cdp = D2*(-1.5*Cp+2*C[tout][len1+1]-0.5*C[tout][len1+2])/dx2
+  #Cdm = D1*(11/6*Cm-3*C[tout][len1-2]+1.5*C[tout][len1-3]-1/3*C[tout][len1-4])/dx1
+  #Cdp = D2*(-11/6*Cp+3*C[tout][len1+1]-1.5*C[tout][len1+2]+1/3*C[tout][len1+3])/dx2
+  #Cdm = D1*(25/12*Cm-4*C[tout][len1-2]+3*C[tout][len1-3]-4/3*C[tout][len1-4]+1/4*C[tout][len1-5])/dx1
+  #Cdp = D2*(-25/12*Cp+4*C[tout][len1+1]-3*C[tout][len1+2]+4/3*C[tout][len1+3]-1/4*C[tout][len1+4])/dx2
+  Cdm = D1*(137/60*Cm-5*C[tout][len1-2]+5*C[tout][len1-3]-10/3*C[tout][len1-4]+5/4*C[tout][len1-5]-1/5*C[tout][len1-6])/dx1
+  Cdp = D2*(-137/60*Cp+5*C[tout][len1+1]-5*C[tout][len1+2]+10/3*C[tout][len1+3]-5/4*C[tout][len1+4]+1/5*C[tout][len1+5])/dx2
   return Cdm - Cdp
 
 # %%
@@ -236,3 +261,125 @@ plt.ylabel(r'$\varphi$ [mol/$m^3$]')
 plt.tight_layout()
 plt.savefig('multilayer.pgf',bbox_layout='tight')
 plt.show()
+
+# %%
+# Plot pressure solution
+for i in range(1,touts+1):
+  Pplt = np.zeros_like(C[i])
+  Pplt[:points//2] = C[i][:points//2]/S1  
+  Pplt[points//2:] = C[i][points//2:]/S2  
+  plt.plot(x,Pplt,label=f't = {t[i]:0.3f} s')
+  print(Pplt[points//2-1])
+plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$P$ [mol/($msPa$)]')
+plt.tight_layout()
+#plt.savefig('multilayer.pgf',bbox_layout='tight')
+plt.show()
+
+# %%
+"""
+# Pressure Formulation
+"""
+
+# %%
+# Multi-layer system problem setup
+# Layer specific diffusion, lengths, solubility, and spatial discretisation
+D1 = 1.0
+D2 = 0.1
+L1 = 0.5
+L2 = 0.5
+S1 = 1.0
+S2 = 1.1
+P1 = D1*S1
+P2 = D2*S2
+points = 100
+len1 = points//2
+len2 = points - len1
+x1 = np.linspace(0,L1,len1)
+x2 = np.linspace(L1,L1+L2,len2)
+x = np.r_[x1,x2]
+dx1 = x1[1]-x1[0]
+dx2 = x2[1]-x2[0]
+
+# Solution initial values and boundary conditions
+P0 = np.zeros(points)
+P0[0] = 1.0
+
+# Time discretisatiion
+dt = np.minimum(dx1**2/P1*0.5*0.95,dx2**2/P2*0.5*0.95)
+nsteps = int(round(tf/dt,0))
+
+# %%
+# Functions for time derivative by Ficks second law for each membrane layer
+def tder1(ts,Pin):
+  dPdt = np.zeros_like(Pin)
+  for i in range(1,len1-1):
+    dPdt[i] = P1*(Pin[i-1]-2*Pin[i]+Pin[i+1])/dx1**2
+  return dPdt
+def tder2(ts,Pin):
+  dPdt = np.zeros_like(Pin)
+  for i in range(1,len2-1):
+    dPdt[i] = P2*(Pin[i-1]-2*Pin[i]+Pin[i+1])/dx2**2
+  return dPdt
+
+# %%
+# Function used in solving interface boundary conditions by root-finding
+def ifsolve(Pm):
+  Pp = Pm
+  #Pdm = P1*(Pm-P[tout][len1-2])/dx1
+  #Pdp = P2*(P[tout][len1+1]-Pp)/dx2
+  #Pdm = P1*(11/6*Pm-3*P[tout][len1-2]+1.5*P[tout][len1-3]-1/3*P[tout][len1-4])/dx1
+  #Pdp = P2*(-11/6*Pp+3*P[tout][len1+1]-1.5*P[tout][len1+2]+1/3*P[tout][len1+3])/dx2
+  Pdm = P1*(137/60*Pm-5*P[tout][len1-2]+5*P[tout][len1-3]-10/3*P[tout][len1-4]+5/4*P[tout][len1-5]-1/5*P[tout][len1-6])/dx1
+  Pdp = P2*(-137/60*Pp+5*P[tout][len1+1]-5*P[tout][len1+2]+10/3*P[tout][len1+3]-5/4*P[tout][len1+4]+1/5*P[tout][len1+5])/dx2
+  return Pdm - Pdp
+
+# %%
+# Timestep integration for multi-layer system
+P = {}
+P[0] = copy.deepcopy(P0)
+P[1] = copy.deepcopy(P[0])
+tout = 1
+for i in range(1,nsteps+1):
+  # Propagate internal points in each layer in time
+  P[tout][:len1] += tder1(i*dt,P[tout][:len1])*dt
+  P[tout][len1:] += tder2(i*dt,P[tout][len1:])*dt
+  # Solve for interfacial concentrations
+  P[tout][len1-1] = brentq(ifsolve,P[tout][0],P[tout][-1])
+  P[tout][len1] = P[tout][len1-1]
+  # Output if at desired output time
+  if i*dt >= t[tout]:
+    tout += 1
+    P[tout] = copy.deepcopy(P[tout-1])
+
+# %%
+# Plot solution
+for i in range(1,touts+1):
+  plt.plot(x,P[i],label=f't = {t[i]:0.3f} s')
+  print(P[i][points//2-1],P[i][points//2-1]*S1,P[i][points//2-1]*S2)
+plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$P$ [mol/($msPa$)]')
+plt.tight_layout()
+plt.savefig('multilayer_pressure.pgf',bbox_layout='tight')
+plt.show()
+
+# %%
+# Plot solution
+print(P1,P2)
+for i in range(1,touts+1):
+  #J = np.gradient(P[i],x)
+  J = np.zeros_like(P[i])
+  J[:points//2] = -P1*np.gradient(P[i][:points//2],x[:points//2])
+  J[points//2:] = -P2*np.gradient(P[i][points//2:],x[points//2:])
+  plt.semilogy(x,J,label=f't = {t[i]:0.3f} s')
+  print(np.mean(J)/(P0[0]-P0[1]))
+plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$J$ [mol/$m^2\cdot s$]')
+plt.tight_layout()
+#plt.savefig('multilayer.pgf',bbox_layout='tight')
+plt.show()
+
+# %%
