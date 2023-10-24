@@ -68,7 +68,7 @@ plt.rc('axes',prop_cycle=nord_cycler)
 # Spatial discretisation
 points = 100
 C0 = np.zeros(points)
-L = 1
+L = 0.5
 x = np.linspace(0,L,points)
 dx = x[1]-x[0]
 
@@ -140,7 +140,7 @@ plt.legend()
 plt.xlabel(r'$x$ [$m$]')
 plt.ylabel(r'$\varphi$ [mol/$m^3$]')
 plt.tight_layout()
-plt.savefig('singlelayer.pgf',bbox_layout='tight')
+plt.savefig('singlelayer.pgf',bbox_inches='tight')
 plt.show()
 
 # %%
@@ -149,7 +149,7 @@ print(D)
 for i in range(1,touts+1):
   J = -D*np.gradient(C[i],x)
   plt.semilogy(x,J,label=f't = {t[i]:0.3f} s')
-  print(np.mean(J)/(C0[0]-C0[1]))
+  print(np.mean(J),np.mean(J)*(x[-1]-x[0])/(C0[0]-C0[1]))
   #plt.plot(x,C[i],label=f'transient = {t[i]:0.3f} s')
   #plt.plot(x,transol[i])
 #plt.plot(x,steady(x))
@@ -259,7 +259,7 @@ plt.legend()
 plt.xlabel(r'$x$ [$m$]')
 plt.ylabel(r'$\varphi$ [mol/$m^3$]')
 plt.tight_layout()
-plt.savefig('multilayer.pgf',bbox_layout='tight')
+plt.savefig('multilayer.pgf',bbox_inches='tight')
 plt.show()
 
 # %%
@@ -362,8 +362,12 @@ plt.legend()
 plt.xlabel(r'$x$ [$m$]')
 plt.ylabel(r'$P$ [mol/($msPa$)]')
 plt.tight_layout()
-plt.savefig('multilayer_pressure.pgf',bbox_layout='tight')
+plt.savefig('multilayer_pressure.pgf',bbox_inches='tight')
 plt.show()
+
+# %%
+print(2/2.22,P1/(P1+P2))
+print(2/2.22*0.22,2*P1*P2/(P1+P2))
 
 # %%
 # Plot solution
@@ -374,12 +378,112 @@ for i in range(1,touts+1):
   J[:points//2] = -P1*np.gradient(P[i][:points//2],x[:points//2])
   J[points//2:] = -P2*np.gradient(P[i][points//2:],x[points//2:])
   plt.semilogy(x,J,label=f't = {t[i]:0.3f} s')
-  print(np.mean(J)/(P0[0]-P0[1]))
+  print(np.mean(J)*(x[-1]-x[0])/(P0[0]-P0[1]))
 plt.legend()
 plt.xlabel(r'$x$ [$m$]')
 plt.ylabel(r'$J$ [mol/$m^2\cdot s$]')
 plt.tight_layout()
 #plt.savefig('multilayer.pgf',bbox_layout='tight')
 plt.show()
+
+# %%
+"""
+# N-layer
+"""
+
+# %%
+# Problem setup
+nlayers = 3
+nnode = 99
+S = np.array([1.0,1.1,0.9])
+D = np.array([1.0,0.1,0.8])
+P = S*D
+L = np.ones(nlayers)*(1/3)
+iids = np.cumsum(np.ones(nlayers-1)*nnode//3,dtype=np.int_) # Interface array indexes
+iids = np.r_[np.zeros(1,dtype=np.int_),iids,np.ones(1,dtype=np.int_)*nnode]
+x = np.zeros(nnode)
+for i in range(nlayers):
+  x[iids[i]:iids[i+1]]= np.linspace(x[iids[i]],np.cumsum(L)[i],iids[i+1]-iids[i])
+  if i != nlayers - 1:
+    x[iids[i+1]] = x[iids[i+1]-1]
+dx = x[1]-x[0]
+dt = dx**2/np.max(P)*0.5*0.95
+tf = 2.0
+nsteps = int(round(tf/dt,0))
+t = np.array([0.0,1e-3,5e-2,2e-1,2.0])
+touts = len(t) - 1
+
+# %%
+# Initial solution with BCs
+p = {}
+p[0] = np.zeros_like(x)
+p[0][0] = 1.0
+
+# %%
+# Functions for time derivative by Darcy's second law
+def tder(pin,layer):
+  dpdt = np.zeros_like(pin)
+  for i in range(1,len(dpdt)-1):
+    dpdt[i] = P[layer]*(pin[i-1]-2*pin[i]+pin[i+1])/dx**2
+  return dpdt
+
+# %%
+# Function used in solving interface boundary conditions by root-finding
+def ifsolve(pm,layer,idx):
+  pp = pm
+  pdm = P[layer]*(137/60*pm-5*p[tout][idx-2]+5*p[tout][idx-3]-10/3*p[tout][idx-4]+5/4*p[tout][idx-5]-1/5*p[tout][idx-6])/dx
+  pdp = P[layer+1]*(-137/60*pp+5*p[tout][idx+1]-5*p[tout][idx+2]+10/3*p[tout][idx+3]-5/4*p[tout][idx+4]+1/5*p[tout][idx+5])/dx
+  return pdm - pdp
+
+# %%
+# Timestep integration for multi-layer system
+p[1] = copy.deepcopy(p[0])
+tout = 1
+for i in range(1,nsteps+1):
+  # Loop over layers
+  for j in range(nlayers):
+    # Propagate internal points via Fick's Law
+    p[tout][iids[j]:iids[j+1]] += tder(p[tout][iids[j]:iids[j+1]],j)*dt
+  # Solve for interfacial pressures
+  for k in range(nlayers-1):
+    p[tout][iids[k+1]-1] = brentq(ifsolve,p[tout][0],p[tout][-1],args=(k,iids[k+1]))
+    p[tout][iids[k+1]] = p[tout][iids[k+1]-1]
+    
+  # Output if at desired output time
+  if i*dt >= t[tout]:
+    tout += 1
+    p[tout] = copy.deepcopy(p[tout-1])
+
+# %%
+# Plot solution
+for i in range(1,touts+1):
+  plt.plot(x,p[i],label=f't = {t[i]:0.3f} s')
+plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$P$ [mol/($msPa$)]')
+plt.tight_layout()
+plt.savefig('3layer.pgf',bbox_inches='tight')
+plt.show()
+
+# %%
+# Plot solution
+print(P)
+for i in range(1,touts+1):
+  J = np.zeros_like(p[i])
+  for j in range(nlayers):
+    J[iids[j]:iids[j+1]] = -P[j]*np.gradient(p[i][iids[j]:iids[j+1]],x[iids[j]:iids[j+1]])
+  plt.semilogy(x,J,label=f't = {t[i]:0.3f} s')
+  print(np.mean(J)*(x[-1]-x[0])/(p[0][0]-p[0][-1]))
+plt.legend()
+plt.xlabel(r'$x$ [$m$]')
+plt.ylabel(r'$J$ [mol/$m^2\cdot s$]')
+plt.tight_layout()
+#plt.savefig('multilayer.pgf',bbox_layout='tight')
+plt.show()
+
+# %%
+"""
+# FEM Formulation
+"""
 
 # %%
