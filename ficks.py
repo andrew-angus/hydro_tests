@@ -68,7 +68,7 @@ plt.rc('axes',prop_cycle=nord_cycler)
 # Spatial discretisation
 points = 100
 C0 = np.zeros(points)
-L = 0.5
+L = 1.0
 x = np.linspace(0,L,points)
 dx = x[1]-x[0]
 
@@ -383,7 +383,7 @@ plt.legend()
 plt.xlabel(r'$x$ [$m$]')
 plt.ylabel(r'$J$ [mol/$m^2\cdot s$]')
 plt.tight_layout()
-#plt.savefig('multilayer.pgf',bbox_layout='tight')
+plt.savefig('twolayerflux.pgf',bbox_inches='tight')
 plt.show()
 
 # %%
